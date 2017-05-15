@@ -4,47 +4,54 @@ import socket
 import webbrowser
 
 
-HOST, PORT = "", 8001
+HOST, PORT = "", 8000
 LISTEN_LIMIT = 1
 
-SIMPLE_RESPONCSE = b"""HTTP/1.1 200 OK
-    Date: Wed, 04 Jun 2014 20:35:29 GMT
-    Server: Apache/2.2.17 (Unix)
-    Set-Cookie: PHPSESSID=dc09f975147aa6011cac3177c1646625; path=/
-    Expires: Thu, 19 Nov 1981 08:52:00 GMT
-    Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0
-    Pragma: no-cache
-    Content-Length: 263
+RESPONSE_HEADER_TEMPLATE = """HTTP/1.1 %(status)s
+    Content-Length: %(length)s
     Keep-Alive: timeout=5, max=100
     Connection: Keep-Alive
     Content-Type: text/html
 
-    <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-    <html>
-    <head>
-    <title>Welcome to Python.com</title>    
-    </head>
-    <body>    
-        <p>Hello world!!!</p>
-    </body>
-    <frameset rows="100%,*" frameborder=0 border=0>
-    <frame name="main" src="inside.phtml?source=home&" frameborder="0">
-    </frameset>
-    </html>
-    """
+    %(body)s
+"""
+
+RESPONSE_BODY_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>%(title)s</title>
+</head>
+<body>
+    %(content)s
+</body>
+</html>
+"""
 
 class SimpleServer:
-    def start(self):
+    def start_forever(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((HOST, PORT))
             sock.listen(LISTEN_LIMIT)
-            conn, addr = sock.accept()
+            while True:
+                conn, addr = sock.accept()
+                data = conn.recv(1024)
 
-        print(conn, addr)
+                print(conn, addr, data)
 
+                body = RESPONSE_BODY_TEMPLATE % dict(
+                        title='Main Title',
+                        content="<h1>Hello world!!!</h1>"
+                    )
+                res = RESPONSE_HEADER_TEMPLATE % dict(
+                        body=body,
+                        status="200 OK",
+                        length=len(body)
+                    )
 
-        conn.send(SIMPLE_RESPONCSE)
-        conn.close()
+                conn.send(res.encode())
+                conn.close()
 
 
 if __name__ == "__main__":
@@ -52,6 +59,6 @@ if __name__ == "__main__":
 
     server = SimpleServer()
 
-    webbrowser.open("0.0.0.0:%s" % PORT)
+    # webbrowser.open("0.0.0.0:%s" % PORT)
 
-    server.start()
+    server.start_forever()
