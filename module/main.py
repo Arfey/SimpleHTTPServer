@@ -9,7 +9,7 @@ import os
 __all__ = ["BaseHTTPStatus", "status", ]
 
 
-HOST, PORT = "0.0.0.0", 8001
+HOST, PORT = "0.0.0.0", 8000
 LISTEN_LIMIT = 1
 
 
@@ -49,6 +49,8 @@ RESPONSE_BODY_TEMPLATE = """\
 </html>
 """
 
+RESPONSE_BODY_FILE_TEMPLATE = """%(content)s"""
+
 DIR_TEMPLATE = "<li><a href='%(path)s'>%(name)s</a>/</li>"
 FILE_TEMPLATE = "<li><a href='%(path)s'>%(name)s</a></li>"
 
@@ -82,27 +84,34 @@ class SimpleHTTPServer:
         self.port = port
         self.socket = None
         self.path = "/"
+        self.module_path = os.path.dirname(os.path.abspath(__file__))
 
     def echo_about_run(self) -> None:
         """Write in stdout message with info about start server"""
         print(ECHO_MESSAGES_TEMPLATE % dict(port=self.port, host=self.host))
 
-    def get_relative_path(self, path):
-        return os.path.relpath(path, os.path.dirname(os.path.abspath(__file__)))
+    def get_relative_path(self, path: str) -> str:
+        """Return path relative to module path for link"""
+        return os.path.relpath(path, self.module_path)
 
-    def parsing_request(self, headers):
+    def parsing_request(self, headers: str) -> None:
+        """Parsing url and send response"""
         path = self.get_url_path(headers)
 
         full_path = os.path.dirname(os.path.abspath(__file__)) + path
 
         # send 404 if path is not found
         if not os.path.exists(full_path):
-            self.send_error()
-            return
+            return self.send_error()
+
+        if os.path.isfile(full_path):
+            return self.send_response_file(path=full_path)
 
         content = ''
 
-        for path, dirs, files in os.walk(full_path):
+        # generate too lists of dirs and file
+        # del dirs[:] make deep=1
+        for _, dirs, files in os.walk(full_path):
             for dr in dirs:
                 pth = self.get_relative_path(full_path + '/' + dr)
                 content += DIR_TEMPLATE % dict(path=pth, name=dr)
@@ -119,14 +128,18 @@ class SimpleHTTPServer:
         """Return path of headers"""
         path = re.search(r"(/[^\s]*)", headers.decode("utf-8")).group() #@TODO: before searching, compile expression
 
-        print("path: ", path) 
+        print("HTTP\1.1 ", path) #@TODO: add logger
         self.path = path
 
         return path
 
-    def send_response(self, title: str = 'http server', content: str = '', status: str = status.HTTP_200_OK) -> None:
+    def send_response(self,
+                      title: str = 'http server',
+                      content: str = '',
+                      template=RESPONSE_BODY_TEMPLATE,
+                      status: str = status.HTTP_200_OK) -> None:
         """Send http responce to client"""
-        body = RESPONSE_BODY_TEMPLATE % dict(
+        body = template % dict(
                     title='Main Title',
                     content=content,
                     path=self.path)
@@ -139,6 +152,15 @@ class SimpleHTTPServer:
 
         self.socket.send(res.encode())
         self.socket.close()
+
+    def send_response_file(self, *args, path, **kwargs):
+        with open(path, 'r') as file:
+            content = file.read()
+
+        self.send_response(*args, 
+                           content=content,
+                           template=RESPONSE_BODY_FILE_TEMPLATE,
+                           **kwargs)
 
     def send_error(self, status: str=status.HTTP_404_NOT_FOUND) -> None:
         self.send_response(status=status, content=NOT_FOUND_TEMPLATE)
