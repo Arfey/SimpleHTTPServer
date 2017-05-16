@@ -25,6 +25,10 @@ RESPONSE_HEADER_TEMPLATE = """HTTP/1.1 %(status)s
     %(body)s
 """
 
+NOT_FOUND_TEMPLATE = """\
+<h3>Not Found 404</h3>
+"""
+
 RESPONSE_BODY_TEMPLATE = """\
 <!DOCTYPE html>
 <html lang="en">
@@ -36,7 +40,7 @@ RESPONSE_BODY_TEMPLATE = """\
 </head>
 <body class="row">
     <div class="col-lg-12">
-        <h2>Directory listing for <mark>(path)s</mark></h1>
+        <h2>Directory listing for <mark>%(path)s</mark></h1>
         <ul>
             %(content)s
         </ul>
@@ -77,24 +81,34 @@ class SimpleHTTPServer:
         self.host = host
         self.port = port
         self.socket = None
+        self.path = "/"
 
     def echo_about_run(self) -> None:
         """Write in stdout message with info about start server"""
         print(ECHO_MESSAGES_TEMPLATE % dict(port=self.port, host=self.host))
 
+    def get_relative_path(self, path):
+        return os.path.relpath(path, os.path.dirname(os.path.abspath(__file__)))
+
     def parsing_request(self, headers):
         path = self.get_url_path(headers)
 
         full_path = os.path.dirname(os.path.abspath(__file__)) + path
+
+        # send 404 if path is not found
+        if not os.path.exists(full_path):
+            self.send_error()
+            return
+
         content = ''
 
         for path, dirs, files in os.walk(full_path):
             for dr in dirs:
-                pth = full_path + '/' + dr
+                pth = self.get_relative_path(full_path + '/' + dr)
                 content += DIR_TEMPLATE % dict(path=pth, name=dr)
 
             for file in files:
-                pth = full_path + '/' + file
+                pth = self.get_relative_path(full_path + '/' + file)
                 content += FILE_TEMPLATE % dict(path=pth, name=file)
 
             del dirs[:]
@@ -105,7 +119,8 @@ class SimpleHTTPServer:
         """Return path of headers"""
         path = re.search(r"(/[^\s]*)", headers.decode("utf-8")).group() #@TODO: before searching, compile expression
 
-        print("path: ", path)
+        print("path: ", path) 
+        self.path = path
 
         return path
 
@@ -113,7 +128,8 @@ class SimpleHTTPServer:
         """Send http responce to client"""
         body = RESPONSE_BODY_TEMPLATE % dict(
                     title='Main Title',
-                    content=content)
+                    content=content,
+                    path=self.path)
 
         # include length of body for HTTP\1.1 protocol
         res = RESPONSE_HEADER_TEMPLATE % dict(
@@ -124,8 +140,8 @@ class SimpleHTTPServer:
         self.socket.send(res.encode())
         self.socket.close()
 
-    def send_error(status: str=status.HTTP_404_NOT_FOUND) -> None:
-        self.send_response(status=status)
+    def send_error(self, status: str=status.HTTP_404_NOT_FOUND) -> None:
+        self.send_response(status=status, content=NOT_FOUND_TEMPLATE)
 
     def start_forever(self) -> None:
         self.echo_about_run()
@@ -139,10 +155,6 @@ class SimpleHTTPServer:
 
                 # print(self.socket, addr, data)
                 self.parsing_request(data)
-
-                self.send_response()
-
-                
 
 
 if __name__ == "__main__":
