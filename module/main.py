@@ -128,7 +128,7 @@ class SimpleHTTPServer:
         """Return path of headers"""
         path = re.search(r"(/[^\s]*)", headers.decode("utf-8")).group() #@TODO: before searching, compile expression
 
-        print("HTTP\1.1 ", path) #@TODO: add logger
+        print("HTTP\1.1 ", path)
         self.path = path
 
         return path
