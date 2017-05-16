@@ -2,9 +2,14 @@ __author__ = "Misha Gavela"
 
 import socket
 import webbrowser
+import re
+import os
 
 
-HOST, PORT = "0.0.0.0", 8000
+__all__ = ["BaseHTTPStatus", "status", ]
+
+
+HOST, PORT = "0.0.0.0", 8001
 LISTEN_LIMIT = 1
 
 
@@ -29,11 +34,19 @@ RESPONSE_BODY_TEMPLATE = """\
     <meta charset="UTF-8">
     <title>%(title)s</title>
 </head>
-<body>
-    %(content)s
+<body class="row">
+    <div class="col-lg-12">
+        <h2>Directory listing for <mark>(path)s</mark></h1>
+        <ul>
+            %(content)s
+        </ul>
+    </div>
 </body>
 </html>
 """
+
+DIR_TEMPLATE = "<li><a href='%(path)s'>%(name)s</a>/</li>"
+FILE_TEMPLATE = "<li><a href='%(path)s'>%(name)s</a></li>"
 
 class BaseHTTPStatus:
     """Singleton object for getting http status"""
@@ -69,11 +82,38 @@ class SimpleHTTPServer:
         """Write in stdout message with info about start server"""
         print(ECHO_MESSAGES_TEMPLATE % dict(port=self.port, host=self.host))
 
-    def send_response(self, title: str = 'http server', conent: str = '', status: str = status.HTTP_200_OK) -> None:
+    def parsing_request(self, headers):
+        path = self.get_url_path(headers)
+
+        full_path = os.path.dirname(os.path.abspath(__file__)) + path
+        content = ''
+
+        for path, dirs, files in os.walk(full_path):
+            for dr in dirs:
+                pth = full_path + '/' + dr
+                content += DIR_TEMPLATE % dict(path=pth, name=dr)
+
+            for file in files:
+                pth = full_path + '/' + file
+                content += FILE_TEMPLATE % dict(path=pth, name=file)
+
+            del dirs[:]
+
+        self.send_response(content=content)
+
+    def get_url_path(self, headers):
+        """Return path of headers"""
+        path = re.search(r"(/[^\s]*)", headers.decode("utf-8")).group() #@TODO: before searching, compile expression
+
+        print("path: ", path)
+
+        return path
+
+    def send_response(self, title: str = 'http server', content: str = '', status: str = status.HTTP_200_OK) -> None:
         """Send http responce to client"""
         body = RESPONSE_BODY_TEMPLATE % dict(
                     title='Main Title',
-                    content="<h1>Hello world!!!</h1>")
+                    content=content)
 
         # include length of body for HTTP\1.1 protocol
         res = RESPONSE_HEADER_TEMPLATE % dict(
@@ -97,7 +137,8 @@ class SimpleHTTPServer:
                 self.socket, addr = sock.accept()
                 data = self.socket.recv(1024)
 
-                print(self.socket, addr, data)
+                # print(self.socket, addr, data)
+                self.parsing_request(data)
 
                 self.send_response()
 
